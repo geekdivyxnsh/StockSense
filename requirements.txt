@@ -1,8 +1,9 @@
-streamlit==1.35.0
-numpy==1.26.4
-pandas==2.2.2
-matplotlib==3.8.4
-yfinance==0.2.37
-scikit-learn==1.4.2
-tensorflow==2.15.0
-xlsxwriter==3.2.0
+streamlit
+numpy
+pandas
+matplotlib
+scikit-learn
+keras
+tensorflow
+pandas_datareader
+xlsxwriter
