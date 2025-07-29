@@ -57,9 +57,24 @@ st.markdown("""---""")
 start = '2005-01-01'
 end = '2025-06-30'
 
-# Download stock data
-data = yf.download(stock, start=start, end=end, auto_adjust=False)
+# Download and validate stock data
+try:
+    data = yf.download(stock, start=start, end=end, auto_adjust=False)
+    if data.empty or data['Close'].isnull().all():
+        st.error(f"❌ No valid stock data found for {stock}. Try another symbol.")
+        st.stop()
+except Exception as e:
+    st.error(f"🚨 Error fetching stock data: {e}")
+    st.stop()
+
+# Use only 'Close' column and drop missing values
+data = data[['Close']].dropna()
 data.reset_index(inplace=True)
+
+# Validate cleaned data
+if data.empty:
+    st.error("❌ No data available after cleaning. Try a different stock.")
+    st.stop()
 
 # Display raw data
 st.subheader("🔍 Historical Stock Data")
@@ -79,8 +94,6 @@ plt.title(f"{stock} Stock with MA100 & MA200")
 st.pyplot(fig1)
 
 # Preprocessing
-data = data[['Close']].dropna()
-
 data_train = data[:int(len(data)*0.80)]
 data_test = data[int(len(data)*0.80):]
 
