@@ -12,7 +12,7 @@ from io import BytesIO
 # Set Streamlit page config
 st.set_page_config(layout="wide", page_title="StockSense", page_icon="📈")
 
-# Custom styles for dark theme and visible buttons
+# Custom styles
 st.markdown("""
     <style>
     body {
@@ -59,6 +59,10 @@ end = '2025-06-30'
 
 # Download stock data
 data = yf.download(stock, start=start, end=end, auto_adjust=False)
+if data.empty:
+    st.error("❌ Failed to load data for this stock. Try another.")
+    st.stop()
+
 data.reset_index(inplace=True)
 
 # Display raw data
@@ -81,12 +85,20 @@ st.pyplot(fig1)
 # Preprocessing
 data = data[['Close']].dropna()
 
+# Split train-test
 data_train = data[:int(len(data)*0.80)]
 data_test = data[int(len(data)*0.80):]
 
+# Check if test data is empty
+if data_test.empty or len(data_train) < 100:
+    st.error("❌ Not enough data for predictions.")
+    st.stop()
+
+# Normalize training data
 scaler = MinMaxScaler(feature_range=(0, 1))
 data_train_scaled = scaler.fit_transform(data_train)
 
+# Create training sequences
 x, y = [], []
 for i in range(100, len(data_train_scaled)):
     x.append(data_train_scaled[i-100:i])
@@ -101,8 +113,11 @@ model = load_model('Stock_Predictions_Model.keras')
 # Prepare test data
 past_100 = data_train.tail(100)
 final_test = pd.concat([past_100, data_test], ignore_index=True)
+
+# Scale test data
 final_test_scaled = scaler.transform(final_test)
 
+# Create test sequences
 x_test = []
 y_test = []
 for i in range(100, len(final_test_scaled)):
@@ -112,7 +127,7 @@ for i in range(100, len(final_test_scaled)):
 x_test, y_test = np.array(x_test), np.array(y_test)
 x_test = x_test.reshape((x_test.shape[0], x_test.shape[1], 1))
 
-# Prediction
+# Predict
 y_pred = model.predict(x_test)
 y_pred = scaler.inverse_transform(y_pred)
 y_test = scaler.inverse_transform(y_test.reshape(-1, 1))
