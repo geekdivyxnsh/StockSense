@@ -57,10 +57,14 @@ st.markdown("""---""")
 start = '2005-01-01'
 end = '2025-06-30'
 
-# Download stock data
-data = yf.download(stock, start=start, end=end, auto_adjust=False)
-if data.empty:
-    st.error("❌ Failed to load data for this stock. Try another.")
+# Reliable download using .history()
+try:
+    ticker = yf.Ticker(stock)
+    data = ticker.history(start=start, end=end)
+    if data.empty:
+        raise ValueError("No data returned for this ticker.")
+except Exception as e:
+    st.error(f"❌ Failed to fetch stock data: {e}")
     st.stop()
 
 data.reset_index(inplace=True)
@@ -108,14 +112,22 @@ x, y = np.array(x), np.array(y)
 x = x.reshape((x.shape[0], x.shape[1], 1))
 
 # Load model
-model = load_model('Stock_Predictions_Model.keras')
+try:
+    model = load_model('Stock_Predictions_Model.keras')
+except Exception as e:
+    st.error(f"❌ Failed to load model: {e}")
+    st.stop()
 
 # Prepare test data
 past_100 = data_train.tail(100)
 final_test = pd.concat([past_100, data_test], ignore_index=True)
 
 # Scale test data
-final_test_scaled = scaler.transform(final_test)
+try:
+    final_test_scaled = scaler.transform(final_test)
+except Exception as e:
+    st.error(f"❌ Scaling error: {e}")
+    st.stop()
 
 # Create test sequences
 x_test = []
