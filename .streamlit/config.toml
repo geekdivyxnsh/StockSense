@@ -1,2 +1,6 @@
-[runner]
-python_version = "3.10"
+[theme]
+base="dark"
+primaryColor="#f9b021"
+backgroundColor="#111111"
+secondaryBackgroundColor="#1c1c1c"
+textColor="#ffffff"
