@@ -2,189 +2,111 @@
 
 import numpy as np
 import pandas as pd
-import yfinance as yf
+import requests
+import datetime
 from keras.models import load_model
 from sklearn.preprocessing import MinMaxScaler
 import streamlit as st
 import matplotlib.pyplot as plt
-from io import BytesIO
 
-# Set Streamlit page config
-st.set_page_config(layout="wide", page_title="StockSense", page_icon="📈")
-
-# Custom styles
-st.markdown("""
-    <style>
-    body {
-        background: linear-gradient(135deg, #0f0f0f, #1e1e1e);
-        color: white;
-    }
-    .stApp {
-        background-color: #121212;
-    }
-    .css-1d391kg, .css-1v3fvcr, .css-1cpxqw2 {
-        color: white !important;
-    }
-    .stDownloadButton > button {
-        color: black !important;
-        background-color: #f9b021 !important;
-        border-radius: 10px;
-        padding: 10px 20px;
-        font-weight: bold;
-        transition: 0.3s ease-in-out;
-    }
-    .stDownloadButton > button:hover {
-        background-color: #0096c4 !important;
-        color: white !important;
-    }
-    footer {visibility: hidden;}
-    </style>
-""", unsafe_allow_html=True)
-
-# Sidebar for stock selection
-st.sidebar.title("🧭 Select Stock")
-stock = st.sidebar.selectbox(
-    "Choose a stock to predict:",
-    options=["GOOG", "AAPL", "MSFT", "AMZN", "TSLA", "META", "NFLX"],
-    index=0
-)
-
-# App Title
+# Set page config
+st.set_page_config(page_title="StockSense - Stock Price Predictor", layout="wide")
 st.title("📈 StockSense - Stock Price Predictor")
-st.markdown("""---""")
 
-# Date Range
-start = '2005-01-01'
-end = '2025-06-30'
+# Dropdown for popular stocks
+popular_stocks = ["AAPL", "MSFT", "GOOGL", "TSLA", "AMZN", "META", "INFY", "RELIANCE.BSE", "TCS.BSE"]
+stock = st.selectbox("Choose a Stock Symbol", popular_stocks)
 
-# Reliable download using .history()
-try:
-    ticker = yf.Ticker(stock)
-    data = ticker.history(start=start, end=end)
-    if data.empty:
-        raise ValueError("No data returned for this ticker.")
-except Exception as e:
-    st.error(f"❌ Failed to fetch stock data: {e}")
+# Twelve Data API info
+API_KEY = "aff4764122b9463aaaff6b18ee69550f"
+BASE_URL = "https://api.twelvedata.com/time_series"
+
+# Date range
+start_date = "2005-01-01"
+end_date = datetime.datetime.now().strftime("%Y-%m-%d")
+
+# Fetch data
+params = {
+    "symbol": stock,
+    "interval": "1day",
+    "start_date": start_date,
+    "end_date": end_date,
+    "apikey": API_KEY,
+    "format": "JSON",
+    "outputsize": 5000
+}
+
+response = requests.get(BASE_URL, params=params)
+
+if response.status_code != 200:
+    st.error("❌ Failed to fetch data. Check the stock symbol or API key.")
     st.stop()
 
-data.reset_index(inplace=True)
+data_json = response.json()
 
-# Display raw data
-st.subheader("🔍 Historical Stock Data")
-st.dataframe(data.tail(), use_container_width=True)
-
-# Moving Averages
-ma_100 = data.Close.rolling(100).mean()
-ma_200 = data.Close.rolling(200).mean()
-
-st.subheader("📊 Moving Averages")
-fig1 = plt.figure(figsize=(9, 5))
-plt.plot(ma_100, 'r', label='100-Day MA')
-plt.plot(ma_200, 'b', label='200-Day MA')
-plt.plot(data.Close, 'g', label='Original')
-plt.legend()
-plt.title(f"{stock} Stock with MA100 & MA200")
-st.pyplot(fig1)
-
-# Preprocessing
-data = data[['Close']].dropna()
-
-# Split train-test
-data_train = data[:int(len(data)*0.80)]
-data_test = data[int(len(data)*0.80):]
-
-# Check if test data is empty
-if data_test.empty or len(data_train) < 100:
-    st.error("❌ Not enough data for predictions.")
+if "values" not in data_json:
+    st.error(f"❌ API Error: {data_json.get('message', 'No data returned')}")
     st.stop()
 
-# Normalize training data
+# Prepare DataFrame
+data = pd.DataFrame(data_json["values"])
+data["datetime"] = pd.to_datetime(data["datetime"])
+data.set_index("datetime", inplace=True)
+data.sort_index(inplace=True)
+data = data.astype(float)
+
+# Show raw data
+with st.expander("📊 Show Raw Data"):
+    st.write(data.tail())
+
+# Split data
+data_train = data[["close"]][:-100]
+data_test = data[["close"]][-100:]
+
+# Scale data
 scaler = MinMaxScaler(feature_range=(0, 1))
 data_train_scaled = scaler.fit_transform(data_train)
 
-# Create training sequences
-x, y = [], []
-for i in range(100, len(data_train_scaled)):
-    x.append(data_train_scaled[i-100:i])
-    y.append(data_train_scaled[i, 0])
-
-x, y = np.array(x), np.array(y)
-x = x.reshape((x.shape[0], x.shape[1], 1))
-
 # Load model
 try:
-    model = load_model('Stock_Predictions_Model.keras')
+    model = load_model("keras_model.h5")
 except Exception as e:
-    st.error(f"❌ Failed to load model: {e}")
+    st.error(f"❌ Could not load model: {e}")
     st.stop()
 
-# Prepare test data
+# Prepare test input
 past_100 = data_train.tail(100)
 final_test = pd.concat([past_100, data_test], ignore_index=True)
 
-# Scale test data
-try:
-    final_test_scaled = scaler.transform(final_test)
-except Exception as e:
-    st.error(f"❌ Scaling error: {e}")
+if final_test.empty:
+    st.error("❌ Not enough data to process.")
     st.stop()
 
-# Create test sequences
+input_data = scaler.transform(final_test)
+
 x_test = []
 y_test = []
-for i in range(100, len(final_test_scaled)):
-    x_test.append(final_test_scaled[i-100:i])
-    y_test.append(final_test_scaled[i, 0])
+
+for i in range(100, input_data.shape[0]):
+    x_test.append(input_data[i - 100:i])
+    y_test.append(input_data[i, 0])
 
 x_test, y_test = np.array(x_test), np.array(y_test)
-x_test = x_test.reshape((x_test.shape[0], x_test.shape[1], 1))
 
 # Predict
-y_pred = model.predict(x_test)
-y_pred = scaler.inverse_transform(y_pred)
-y_test = scaler.inverse_transform(y_test.reshape(-1, 1))
+y_predicted = model.predict(x_test)
 
-# Final Plot
-st.subheader("📉 Actual vs Predicted Prices")
-fig2 = plt.figure(figsize=(9, 6))
-plt.plot(y_pred, 'r', label='Predicted Price')
-plt.plot(y_test, 'g', label='Actual Price')
+# Inverse scale
+scale_factor = 1 / scaler.scale_[0]
+y_predicted = y_predicted * scale_factor
+y_test = y_test * scale_factor
+
+# Plotting
+st.subheader(f"📉 Predicted vs Actual Prices for {stock}")
+fig = plt.figure(figsize=(12, 6))
+plt.plot(y_test, 'b', label='Actual Price')
+plt.plot(y_predicted, 'r', label='Predicted Price')
 plt.xlabel('Time')
-plt.ylabel(f'{stock} Price')
-plt.title(f'{stock} Price Prediction')
+plt.ylabel('Price')
 plt.legend()
-st.pyplot(fig2)
-
-# Download CSV/Excel
-st.subheader("⬇️ Download Prediction Results")
-pred_df = pd.DataFrame({
-    'Actual Price': y_test.flatten(),
-    'Predicted Price': y_pred.flatten()
-})
-
-# CSV download
-csv = pred_df.to_csv(index=False).encode('utf-8')
-st.download_button("Download CSV", data=csv, file_name=f'{stock}_prediction.csv', mime='text/csv')
-
-# Excel download
-excel_buffer = BytesIO()
-with pd.ExcelWriter(excel_buffer, engine='xlsxwriter') as writer:
-    pred_df.to_excel(writer, index=False, sheet_name='Sheet1')
-
-st.download_button(
-    label="Download Excel",
-    data=excel_buffer.getvalue(),
-    file_name=f'{stock}_prediction.xlsx',
-    mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-)
-
-# Footer
-st.markdown("""
----
-<div style='text-align: center; color: gray;'>
-    <strong>Made by Divyanshu</strong><br>
-    📧 geekdivyxnsh@gmail.com<br>
-    🔗 <a href='https://www.linkedin.com/in/divyanshu-k-88a3a1266/' style='color: lightblue;' target='_blank'>LinkedIn</a> |
-    <a href='https://github.com/geekdivyxnsh' style='color: lightblue;' target='_blank'>GitHub</a>
-</div>
-""", unsafe_allow_html=True)
+st.pyplot(fig)
