@@ -2,12 +2,13 @@
 
 import numpy as np
 import pandas as pd
-import yfinance as yf
+import pandas_datareader.data as web
 from keras.models import load_model
 from sklearn.preprocessing import MinMaxScaler
 import streamlit as st
 import matplotlib.pyplot as plt
 from io import BytesIO
+import datetime
 
 # Set Streamlit page config
 st.set_page_config(layout="wide", page_title="StockSense", page_icon="📈")
@@ -54,22 +55,22 @@ st.title("📈 StockSense - Stock Price Predictor")
 st.markdown("""---""")
 
 # Date Range
-start = '2005-01-01'
-end = '2025-06-30'
+start = datetime.datetime(2005, 1, 1)
+end = datetime.datetime(2025, 6, 30)
 
 # Download and validate stock data
 try:
-    data = yf.download(stock, start=start, end=end, auto_adjust=False)
+    data = web.DataReader(stock, 'yahoo', start, end)
     if data.empty or data['Close'].isnull().all():
         st.error(f"❌ No valid stock data found for {stock}. Try another symbol.")
         st.stop()
+    data.reset_index(inplace=True)
 except Exception as e:
     st.error(f"🚨 Error fetching stock data: {e}")
     st.stop()
 
 # Use only 'Close' column and drop missing values
 data = data[['Close']].dropna()
-data.reset_index(inplace=True)
 
 # Validate cleaned data
 if data.empty:
