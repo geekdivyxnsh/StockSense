@@ -9,6 +9,39 @@ import streamlit as st
 import matplotlib.pyplot as plt
 from io import BytesIO
 
+import socket
+import requests
+import yfinance as yf
+
+# Check basic internet access
+st.write("🌐 Checking internet access...")
+try:
+    requests.get("https://www.google.com", timeout=5)
+    st.success("✅ Internet access available")
+except:
+    st.error("❌ No internet access from Streamlit")
+
+# Try resolving Yahoo Finance domain
+st.write("🔍 Resolving Yahoo Finance host...")
+try:
+    ip = socket.gethostbyname("query1.finance.yahoo.com")
+    st.success(f"✅ Host resolved: {ip}")
+except Exception as e:
+    st.error(f"❌ DNS resolution failed: {e}")
+
+# Try downloading small sample data
+st.write("📊 Trying to download AAPL data...")
+try:
+    df_test = yf.download("AAPL", period="5d")
+    if df_test.empty:
+        st.error("❌ yfinance fetch failed: Empty dataframe")
+    else:
+        st.success("✅ yfinance working")
+        st.dataframe(df_test.head())
+except Exception as e:
+    st.error(f"❌ yfinance threw an error: {e}")
+
+
 # Set Streamlit config
 st.set_page_config(page_title="StockSense", layout="wide", page_icon="📈")
 
