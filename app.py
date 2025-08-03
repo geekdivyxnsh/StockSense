@@ -87,6 +87,9 @@ data_test = data[int(len(data)*0.80):]
 #scaler = MinMaxScaler(feature_range=(0, 1))
 #data_train_scaled = scaler.fit_transform(data_train)
 
+st.write("Ticker data preview:", data_train.head())
+st.write("Data shape:", data_train.shape)
+
 if data_train is not None and not data_train.empty:
     scaler = MinMaxScaler()
     data_train_scaled = scaler.fit_transform(data_train)
