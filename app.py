@@ -31,8 +31,8 @@ end_date = '01-01-2025'
 # Download data
 st.subheader("⏳ Fetching Stock Data...")
 try:
-    #data = yf.download(stock, start=start_date, end=end_date)
-    data = yf.download(stock, start=start, end=end, auto_adjust=False, progress=False, threads=False)
+    data = yf.download(stock, start=start_date, end=end_date)
+    
 
 except Exception as e:
     st.error(f"Failed to download data: {e}")
