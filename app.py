@@ -84,8 +84,16 @@ data = data[['Close']].dropna()
 data_train = data[:int(len(data)*0.80)]
 data_test = data[int(len(data)*0.80):]
 
-scaler = MinMaxScaler(feature_range=(0, 1))
-data_train_scaled = scaler.fit_transform(data_train)
+#scaler = MinMaxScaler(feature_range=(0, 1))
+#data_train_scaled = scaler.fit_transform(data_train)
+
+if data_train is not None and not data_train.empty:
+    scaler = MinMaxScaler()
+    data_train_scaled = scaler.fit_transform(data_train)
+else:
+    st.error("Training data is empty or invalid. Please check the input or ticker symbol.")
+    st.stop()
+
 
 x, y = [], []
 for i in range(100, len(data_train_scaled)):
