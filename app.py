@@ -54,8 +54,9 @@ st.title("📈 StockSense - Stock Price Predictor")
 st.markdown("---")
 
 # Date range
-start = '2005-01-01'
-end = '2025-06-30'
+start = '2010-01-01'
+end = '2024-12-31'
+
 
 # Download stock data
 st.write("Ticker:", stock)
