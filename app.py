@@ -12,7 +12,7 @@ import socket
 
 # Configure Streamlit
 st.set_page_config(page_title="StockSense", layout="wide", page_icon="📈")
-st.title("📈 StockSense - Predict Stock Prices using LSTM")
+st.title("📈 StockSense - Predict Stock Prices using ML and recurrent neural network")
 
 # Sidebar Configuration
 st.sidebar.header("🔍 Stock Configuration")
