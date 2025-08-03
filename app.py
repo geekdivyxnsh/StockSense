@@ -1,185 +1,105 @@
-# app.py
-
-import numpy as np
-import pandas as pd
-import yfinance as yf
-from keras.models import load_model
-from sklearn.preprocessing import MinMaxScaler
 import streamlit as st
+from datetime import datetime
+import pandas as pd
 import matplotlib.pyplot as plt
-from io import BytesIO
+import numpy as np
 
-import socket
-import requests
-import yfinance as yf
-
-# Check basic internet access
-st.write("🌐 Checking internet access...")
-try:
-    requests.get("https://www.google.com", timeout=5)
-    st.success("✅ Internet access available")
-except:
-    st.error("❌ No internet access from Streamlit")
-
-# Try resolving Yahoo Finance domain
-st.write("🔍 Resolving Yahoo Finance host...")
-try:
-    ip = socket.gethostbyname("query1.finance.yahoo.com")
-    st.success(f"✅ Host resolved: {ip}")
-except Exception as e:
-    st.error(f"❌ DNS resolution failed: {e}")
-
-# Try downloading small sample data
-st.write("📊 Trying to download AAPL data...")
-try:
-    df_test = yf.download("AAPL", period="5d")
-    if df_test.empty:
-        st.error("❌ yfinance fetch failed: Empty dataframe")
-    else:
-        st.success("✅ yfinance working")
-        st.dataframe(df_test.head())
-except Exception as e:
-    st.error(f"❌ yfinance threw an error: {e}")
-
-
-# Set Streamlit config
+# Set config before anything else
 st.set_page_config(page_title="StockSense", layout="wide", page_icon="📈")
 
-# Sidebar
-st.sidebar.title("🧭 Select Stock")
-stock = st.sidebar.selectbox(
-    "Choose a stock to predict:",
-    options=["GOOG", "AAPL", "MSFT", "AMZN", "TSLA", "META", "NFLX"],
-    index=0
-)
-
 # App title
-st.title("📈 StockSense - Stock Price Predictor")
-st.markdown("---")
+st.title("📈 StockSense - Predict Stock Prices using LSTM")
 
-# Define date range
-start_date = '01-01-2015'
-end_date = '01-01-2025'
+# Sidebar Inputs
+st.sidebar.header("🔍 Stock Configuration")
+ticker = st.sidebar.text_input("Ticker Symbol (e.g., AAPL, MSFT, GOOG)", "AAPL")
+start_date = st.sidebar.date_input("Start Date", datetime(2010, 1, 1))
+end_date = st.sidebar.date_input("End Date", datetime(2024, 12, 31))
+
+# Internet and Host Check
+st.subheader("🌐 Connectivity Check")
+try:
+    import socket
+    socket.gethostbyname("finance.yahoo.com")
+    st.success("✅ Internet and Yahoo Finance host accessible.")
+except:
+    st.error("❌ Cannot resolve Yahoo Finance host. Check DNS or Streamlit Cloud.")
 
 # Download data
-st.subheader("⏳ Fetching Stock Data...")
+st.subheader("📊 Downloading Stock Data...")
 try:
-    data = yf.download(stock, start=start_date, end=end_date)
-    
-
+    import yfinance as yf
+    df = yf.download(ticker, start=start_date, end=end_date)
+    if df.empty:
+        raise ValueError("Empty data from yfinance, trying fallback...")
+    st.success(f"✅ Data fetched from yfinance with {df.shape[0]} records.")
 except Exception as e:
-    st.error(f"Failed to download data: {e}")
-    st.stop()
+    st.warning(f"⚠️ yfinance failed: {e}")
+    try:
+        from yahooquery import Ticker as YQ_Ticker
+        tq = YQ_Ticker(ticker)
+        hist = tq.history(start=start_date, end=end_date)
+        df = hist.reset_index().set_index("date")[["close"]].rename(columns={"close": "Close"})
+        st.success(f"✅ Data fetched from yahooquery with {df.shape[0]} records.")
+    except Exception as err:
+        st.error(f"❌ Both yfinance and yahooquery failed: {err}")
+        st.stop()
 
-# Validate data
-if data.empty:
-    st.error("Downloaded data is empty. Please check ticker symbol or date range.")
-    st.stop()
+# Show raw data
+st.write("📄 Raw Data Preview:")
+st.dataframe(df.tail())
 
-st.write("📅 Date Range:", f"{start_date} to {end_date}")
-st.write("📊 Raw data preview:")
-st.dataframe(data.tail(), use_container_width=True)
+# Visualize historical price
+st.subheader("📈 Historical Closing Price")
+fig, ax = plt.subplots(figsize=(12, 4))
+df['Close'].plot(ax=ax)
+plt.xlabel("Date")
+plt.ylabel("Price ($)")
+plt.title(f"{ticker} Stock Price")
+st.pyplot(fig)
 
-# Moving averages
-ma_100 = data['Close'].rolling(100).mean()
-ma_200 = data['Close'].rolling(200).mean()
+# Data preparation for LSTM
+from sklearn.preprocessing import MinMaxScaler
+scaler = MinMaxScaler(feature_range=(0, 1))
+data_scaled = scaler.fit_transform(df[['Close']])
 
-st.subheader("📉 100 & 200 Day Moving Averages")
-fig1 = plt.figure(figsize=(10, 5))
-plt.plot(data['Close'], label='Original', color='green')
-plt.plot(ma_100, label='100-Day MA', color='red')
-plt.plot(ma_200, label='200-Day MA', color='blue')
-plt.title(f"{stock} Stock Price with Moving Averages")
-plt.legend()
-st.pyplot(fig1)
+train_size = int(len(data_scaled) * 0.80)
+train_data = data_scaled[:train_size]
+test_data = data_scaled[train_size:]
 
-# Preprocessing
-data = data[['Close']].dropna()
-data_train = data[:int(len(data)*0.8)]
-data_test = data[int(len(data)*0.8):]
+def create_dataset(data, time_step=60):
+    X, y = [], []
+    for i in range(time_step, len(data)):
+        X.append(data[i-time_step:i])
+        y.append(data[i])
+    return np.array(X), np.array(y)
 
-# Check and scale data
-if data_train.empty:
-    st.error("Training data is empty. Cannot proceed with model.")
-    st.stop()
+X_train, y_train = create_dataset(train_data)
+X_test, y_test = create_dataset(test_data)
 
-scaler = MinMaxScaler()
-data_train_scaled = scaler.fit_transform(data_train)
+# LSTM Model
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense, LSTM
 
-x_train, y_train = [], []
-for i in range(100, len(data_train_scaled)):
-    x_train.append(data_train_scaled[i-100:i])
-    y_train.append(data_train_scaled[i, 0])
-
-x_train = np.array(x_train)
-y_train = np.array(y_train)
-x_train = x_train.reshape((x_train.shape[0], x_train.shape[1], 1))
-
-# Load trained model
-try:
-    model = load_model('Stock_Predictions_Model.keras')
-except Exception as e:
-    st.error(f"Error loading model: {e}")
-    st.stop()
-
-# Prepare test data
-past_100 = data_train.tail(100)
-final_test = pd.concat([past_100, data_test], ignore_index=True)
-final_test_scaled = scaler.transform(final_test)
-
-x_test, y_test = [], []
-for i in range(100, len(final_test_scaled)):
-    x_test.append(final_test_scaled[i-100:i])
-    y_test.append(final_test_scaled[i, 0])
-
-x_test = np.array(x_test)
-y_test = np.array(y_test)
-x_test = x_test.reshape((x_test.shape[0], x_test.shape[1], 1))
+model = Sequential()
+model.add(LSTM(50, return_sequences=True, input_shape=(X_train.shape[1], 1)))
+model.add(LSTM(50))
+model.add(Dense(1))
+model.compile(optimizer='adam', loss='mean_squared_error')
+model.fit(X_train, y_train, epochs=5, batch_size=32, verbose=0)
 
 # Predict
-y_pred = model.predict(x_test)
-y_pred = scaler.inverse_transform(y_pred)
-y_test = scaler.inverse_transform(y_test.reshape(-1, 1))
+predictions = model.predict(X_test)
+predicted_prices = scaler.inverse_transform(predictions)
+actual_prices = scaler.inverse_transform(y_test)
 
-# Plot results
-st.subheader("📈 Actual vs Predicted Stock Price")
-fig2 = plt.figure(figsize=(10, 6))
-plt.plot(y_test, label='Actual Price', color='green')
-plt.plot(y_pred, label='Predicted Price', color='red')
-plt.xlabel("Time")
-plt.ylabel(f"{stock} Price")
-plt.title(f"{stock} Stock Price Prediction")
+# Plot prediction
+st.subheader("📉 Actual vs Predicted Prices")
+fig2, ax2 = plt.subplots(figsize=(12, 4))
+ax2.plot(actual_prices, label="Actual")
+ax2.plot(predicted_prices, label="Predicted")
 plt.legend()
+plt.xlabel("Time")
+plt.ylabel("Price ($)")
+plt.title(f"{ticker} Price Prediction")
 st.pyplot(fig2)
-
-# Download prediction results
-st.subheader("⬇️ Download Predictions")
-pred_df = pd.DataFrame({
-    "Actual Price": y_test.flatten(),
-    "Predicted Price": y_pred.flatten()
-})
-
-csv = pred_df.to_csv(index=False).encode("utf-8")
-st.download_button("Download as CSV", csv, f"{stock}_prediction.csv", "text/csv")
-
-excel_buffer = BytesIO()
-with pd.ExcelWriter(excel_buffer, engine="xlsxwriter") as writer:
-    pred_df.to_excel(writer, index=False, sheet_name="Predictions")
-
-st.download_button(
-    "Download as Excel",
-    excel_buffer.getvalue(),
-    file_name=f"{stock}_prediction.xlsx",
-    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-)
-
-# Footer
-st.markdown("""
----
-<div style='text-align: center; color: gray;'>
-    <strong>Made by Divyanshu</strong><br>
-    📧 geekdivyxnsh@gmail.com<br>
-    🔗 <a href='https://www.linkedin.com/in/divyanshu-k-88a3a1266/' target='_blank' style='color: lightblue;'>LinkedIn</a> |
-    <a href='https://github.com/geekdivyxnsh' target='_blank' style='color: lightblue;'>GitHub</a>
-</div>
-""", unsafe_allow_html=True)
