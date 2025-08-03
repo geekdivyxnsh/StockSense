@@ -25,13 +25,15 @@ st.title("📈 StockSense - Stock Price Predictor")
 st.markdown("---")
 
 # Define date range
-start_date = '2010-01-01'
-end_date = '2024-12-31'
+start_date = '01-01-2015'
+end_date = '01-01-2025'
 
 # Download data
 st.subheader("⏳ Fetching Stock Data...")
 try:
-    data = yf.download(stock, start=start_date, end=end_date)
+    #data = yf.download(stock, start=start_date, end=end_date)
+    data = yf.download(stock, start=start, end=end, auto_adjust=False, progress=False, threads=False)
+
 except Exception as e:
     st.error(f"Failed to download data: {e}")
     st.stop()
