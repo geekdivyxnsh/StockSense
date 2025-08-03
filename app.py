@@ -5,6 +5,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 from io import BytesIO
 import base64
+from sklearn.preprocessing import MinMaxScaler
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import LSTM, Dense
+import socket
 
 # Configure Streamlit
 st.set_page_config(page_title="StockSense", layout="wide", page_icon="📈")
@@ -25,12 +29,11 @@ stock_name = st.sidebar.selectbox("Choose Stock", list(stock_options.keys()))
 ticker = stock_options[stock_name]
 
 start_date = st.sidebar.date_input("Start Date", datetime(2010, 1, 1))
-end_date = st.sidebar.date_input("End Date", datetime(2024, 12, 31))
+end_date = st.sidebar.date_input("End Date", datetime(2025, 7, 31))
 
 # Connectivity check
 st.subheader("🌐 Connectivity Check")
 try:
-    import socket
     socket.gethostbyname("finance.yahoo.com")
     st.success("✅ Internet and Yahoo Finance host accessible.")
 except:
@@ -70,7 +73,6 @@ plt.title(f"{ticker} Stock Price")
 st.pyplot(fig)
 
 # Scale data
-from sklearn.preprocessing import MinMaxScaler
 scaler = MinMaxScaler()
 scaled_data = scaler.fit_transform(df[['Close']])
 train_size = int(len(scaled_data) * 0.8)
@@ -88,10 +90,11 @@ def create_dataset(data, time_step=60):
 X_train, y_train = create_dataset(train_data)
 X_test, y_test = create_dataset(test_data)
 
-# LSTM model
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import LSTM, Dense
+# Reshape
+X_train = X_train.reshape(X_train.shape[0], X_train.shape[1], 1)
+X_test = X_test.reshape(X_test.shape[0], X_test.shape[1], 1)
 
+# LSTM model
 model = Sequential()
 model.add(LSTM(50, return_sequences=True, input_shape=(X_train.shape[1], 1)))
 model.add(LSTM(50))
@@ -128,10 +131,18 @@ fig2.savefig(pdf_buffer, format="pdf")
 pdf_data = pdf_buffer.getvalue()
 st.download_button("Download Prediction Plot (PDF)", pdf_data, file_name=f"{ticker}_prediction.pdf", mime="application/pdf")
 
-# Footer
-st.markdown("---")
-st.markdown("""
-### 👨‍💻 Made by Divyanshu  
-📧 Email: [geekdivyxnsh@gmail.com](mailto:geekdivyxnsh@gmail.com)  
-🔗 [GitHub](https://github.com/geekdivyxnsh) | [LinkedIn](https://www.linkedin.com/in/divyanshu-k-88a3a1266/)
-""")
+# Stylish Footer
+st.markdown(
+    """
+    <hr style='margin-top:40px; border: 1px solid #f9b021;'>
+    <div style='text-align: center; font-family: monospace;'>
+        <h4 style="color:#0096c4;">👨‍💻 Made by <span style="color:#f9b021;">Divyanshu</span></h4>
+        <p style="font-size:15px;">📧 <a href="mailto:geekdivyxnsh@gmail.com" style="color:#f9b021;">geekdivyxnsh@gmail.com</a></p>
+        <p style="font-size:15px;">
+            🔗 <a href="https://github.com/geekdivyxnsh" target="_blank" style="color:#f9b021;">GitHub</a> |
+            <a href="https://www.linkedin.com/in/divyanshu-k-88a3a1266/" target="_blank" style="color:#f9b021;">LinkedIn</a>
+        </p>
+    </div>
+    """,
+    unsafe_allow_html=True
+)
