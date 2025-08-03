@@ -9,10 +9,10 @@ import streamlit as st
 import matplotlib.pyplot as plt
 from io import BytesIO
 
-# Set Streamlit page config
+# Streamlit page config
 st.set_page_config(layout="wide", page_title="StockSense", page_icon="📈")
 
-# Custom styles for dark theme and visible buttons
+# Custom styles
 st.markdown("""
     <style>
     body {
@@ -41,7 +41,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# Sidebar for stock selection
+# Sidebar
 st.sidebar.title("🧭 Select Stock")
 stock = st.sidebar.selectbox(
     "Choose a stock to predict:",
@@ -49,17 +49,25 @@ stock = st.sidebar.selectbox(
     index=0
 )
 
-# App Title
+# App title
 st.title("📈 StockSense - Stock Price Predictor")
-st.markdown("""---""")
+st.markdown("---")
 
-# Date Range
+# Date range
 start = '2005-01-01'
 end = '2025-06-30'
 
 # Download stock data
+st.write("Ticker:", stock)
+st.write("Date Range:", f"{start} to {end}")
+
 data = yf.download(stock, start=start, end=end, auto_adjust=False)
+if data.empty:
+    st.error("Downloaded data is empty. Check ticker symbol and date range.")
+    st.stop()
+
 data.reset_index(inplace=True)
+st.write("Raw data fetched:", data)
 
 # Display raw data
 st.subheader("🔍 Historical Stock Data")
@@ -84,19 +92,16 @@ data = data[['Close']].dropna()
 data_train = data[:int(len(data)*0.80)]
 data_test = data[int(len(data)*0.80):]
 
-#scaler = MinMaxScaler(feature_range=(0, 1))
-#data_train_scaled = scaler.fit_transform(data_train)
+st.write("Training data preview:")
+st.write(data_train.head())
+st.write("Training data shape:", data_train.shape)
 
-st.write("Ticker data preview:", data_train.head())
-st.write("Data shape:", data_train.shape)
-
-if data_train is not None and not data_train.empty:
-    scaler = MinMaxScaler()
-    data_train_scaled = scaler.fit_transform(data_train)
-else:
-    st.error("Training data is empty or invalid. Please check the input or ticker symbol.")
+if data_train.empty:
+    st.error("Training data is empty or invalid. Please check the input.")
     st.stop()
 
+scaler = MinMaxScaler()
+data_train_scaled = scaler.fit_transform(data_train)
 
 x, y = [], []
 for i in range(100, len(data_train_scaled)):
@@ -107,7 +112,11 @@ x, y = np.array(x), np.array(y)
 x = x.reshape((x.shape[0], x.shape[1], 1))
 
 # Load model
-model = load_model('Stock_Predictions_Model.keras')
+try:
+    model = load_model('Stock_Predictions_Model.keras')
+except Exception as e:
+    st.error(f"Error loading model: {e}")
+    st.stop()
 
 # Prepare test data
 past_100 = data_train.tail(100)
@@ -139,7 +148,7 @@ plt.title(f'{stock} Price Prediction')
 plt.legend()
 st.pyplot(fig2)
 
-# Download CSV/Excel
+# Download results
 st.subheader("⬇️ Download Prediction Results")
 pred_df = pd.DataFrame({
     'Actual Price': y_test.flatten(),
